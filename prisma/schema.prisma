@@ -20,3 +20,9 @@ model Post {
   image_url String?
   date_time DateTime @default(now())
 }
+
+model Admin {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  email    String   @unique
+  password String
+}
