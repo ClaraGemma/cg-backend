@@ -13,6 +13,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Admin {
+  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+  email    String   @unique
+  password String
+}
+
 model Post {
   id      String   @id @default(auto()) @map("_id") @db.ObjectId
   title   String   
@@ -21,8 +27,28 @@ model Post {
   date_time DateTime @default(now())
 }
 
-model Admin {
-  id       String   @id @default(auto()) @map("_id") @db.ObjectId
-  email    String   @unique
-  password String
+model Product {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  desc        String
+  image_url   String?
+  price       Float 
+  date_time   DateTime      @default(now())
+  reviews     Review[]
+  comments    Comment[]
+}
+
+model Review {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  rating    Int      
+  product   Product  @relation(fields: [productId], references: [id])
+  productId String   @db.ObjectId
+}
+
+model Comment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  text      String
+  product   Product  @relation(fields: [productId], references: [id])
+  productId String   @db.ObjectId
+  date_time DateTime @default(now())
 }

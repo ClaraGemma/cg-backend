@@ -78,6 +78,113 @@ app.delete("/posts/:id", async (req, res) => {
   res.status(200).json({ message: "Deletado com sucesso!" });
 });
 
+// ENDPOINT PRODUTO
+app.post("/products", upload.single("file"), async (req, res) => {
+  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+
+  const newProduct = await prisma.product.create({
+    data: {
+      title: req.body.title,
+      desc: req.body.desc,
+      image_url: imagePath,
+      price: parseFloat(req.body.price),
+      date_time: new Date(req.body.date_time),
+    },
+  });
+
+  res.status(201).json(newProduct);
+});
+
+app.get("/products", async (req, res) => {
+  const products = await prisma.product.findMany({
+    include: {
+      reviews: true,
+      comments: true,
+    },
+  });
+  res.status(200).json(products);
+});
+
+app.put("/products/:id", async (req, res) => {
+  const updatedProduct = await prisma.product.update({
+    where: { id: req.params.id },
+    data: {
+      title: req.body.title,
+      desc: req.body.desc,
+      image_url: req.body.image_url,
+      price: parseFloat(req.body.price),
+      date_time: new Date(req.body.date_time),
+    },
+  });
+
+  res.status(201).json(updatedProduct);
+});
+
+app.delete("/products/:id", async (req, res) => {
+  await prisma.product.delete({ where: { id: req.params.id } });
+  res.status(200).json({ message: "Produto deletado com sucesso!" });
+});
+
+// ENDPOINT AVALIAÇÃO
+app.post("/products/:id/reviews", async (req, res) => {
+  const { rating } = req.body;
+
+  const newReview = await prisma.review.create({
+    data: {
+      rating: parseInt(rating),
+      productId: req.params.id,
+    },
+  });
+
+  res.status(201).json(newReview);
+});
+
+app.get("/products/:id/reviews", async (req, res) => {
+  const reviews = await prisma.review.findMany({
+    where: { productId: req.params.id },
+  });
+
+  res.status(200).json(reviews);
+});
+
+// ENDPOINT COMENTÁRIOS
+app.post("/products/:id/comments", async (req, res) => {
+  const { text } = req.body;
+
+  const newComment = await prisma.comment.create({
+    data: {
+      text,
+      productId: req.params.id,
+    },
+  });
+
+  res.status(201).json(newComment);
+});
+
+app.get("/products/:id/comments", async (req, res) => {
+  const comments = await prisma.comment.findMany({
+    where: { productId: req.params.id },
+  });
+
+  res.status(200).json(comments);
+});
+
+// ENDPOINT PESQUISAR PRODUTOS
+app.get("/products/search", async (req, res) => {
+  const { query } = req.query;
+
+  const products = await prisma.product.findMany({
+    where: {
+      OR: [
+        { title: { contains: query, mode: "insensitive" } },
+        { desc: { contains: query, mode: "insensitive" } },
+      ],
+    },
+  });
+
+  res.status(200).json(products);
+});
+
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
