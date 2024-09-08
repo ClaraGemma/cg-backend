@@ -16,26 +16,72 @@ app.use("/uploads", express.static("uploads"));
 
 const JWT_SECRET = "j/1~oe9zH>t]0rzq{XTFJ'K(EjxDZ7";
 
+// ENDPOINT REGISTRO
+app.post("/register", async (req, res) => {
+  const { name, email, password } = req.body;
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (existingUser) {
+    return res.status(400).json({ message: "E-mail já cadastrado." });
+  }
+
+  // Criptografa a senha
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  // Cria o novo usuário no banco de dados
+  const newUser = await prisma.user.create({
+    data: {
+      name,
+      email,
+      password: hashedPassword,
+    },
+  });
+
+  res.status(201).json({ message: "Usuário registrado com sucesso!", newUser });
+});
+
 // ENDPOINT LOGIN
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await prisma.admin.findUnique({
+  const admin = await prisma.admin.findUnique({
     where: { email },
   });
 
-  if (!user) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  const userType = admin ? "admin" : user ? "user" : null;
+
+  if (!userType) {
     return res.status(401).json({ message: "Credenciais inválidas" });
   }
 
-  const isPasswordValid = await bcrypt.compare(password, user.password);
+  const isPasswordValid = await bcrypt.compare(
+    password,
+    admin ? admin.password : user.password
+  );
   if (!isPasswordValid) {
     return res.status(401).json({ message: "Credenciais inválidas" });
   }
 
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "1h" });
+  const token = jwt.sign(
+    {
+      userId: admin ? admin.id : user.id,
+      role: userType,
+      name: user ? user.name : admin.name,
+    },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
 
-  res.status(200).json({ token });
+  res
+    .status(200)
+    .json({ token, role: userType, name: user ? user.name : admin.name });
 });
 
 // ENDPOINT POSTAGEM
