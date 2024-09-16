@@ -142,13 +142,26 @@ app.post("/products", upload.single("file"), async (req, res) => {
 });
 
 app.get("/products", async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 12; // 3 linhas x 3 produtos por linha = 9 produtos
+
   const products = await prisma.product.findMany({
+    skip: (page - 1) * limit,
+    take: limit,
     include: {
       reviews: true,
       comments: true,
     },
   });
-  res.status(200).json(products);
+
+  const totalProducts = await prisma.product.count(); // Conta total de produtos
+  const totalPages = Math.ceil(totalProducts / limit);
+
+  res.status(200).json({
+    products,
+    totalPages,
+    currentPage: page,
+  });
 });
 
 app.put("/products/:id", async (req, res) => {
@@ -217,18 +230,63 @@ app.get("/products/:id/comments", async (req, res) => {
 
 // ENDPOINT PESQUISAR PRODUTOS
 app.get("/products/search", async (req, res) => {
-  const { query } = req.query;
+  const { query, page = 1, limit = 10 } = req.query;
 
-  const products = await prisma.product.findMany({
-    where: {
-      OR: [
-        { title: { contains: query, mode: "insensitive" } },
-        { desc: { contains: query, mode: "insensitive" } },
-      ],
-    },
-  });
+  // Defina os parâmetros de paginação
+  const skip = (page - 1) * limit;
+  const take = parseInt(limit);
 
-  res.status(200).json(products);
+  // Se a consulta estiver vazia, retorna todos os produtos
+  if (!query) {
+    try {
+      const totalProducts = await prisma.product.count();
+      const products = await prisma.product.findMany({
+        skip,
+        take,
+      });
+      return res.status(200).json({
+        products,
+        totalPages: Math.ceil(totalProducts / limit),
+        currentPage: parseInt(page),
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Erro ao buscar produtos.", error });
+    }
+  }
+
+  // Filtra produtos com base na consulta
+  try {
+    const [products, totalProducts] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { desc: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        skip,
+        take,
+      }),
+      prisma.product.count({
+        where: {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { desc: { contains: query, mode: "insensitive" } },
+          ],
+        },
+      }),
+    ]);
+
+    res.status(200).json({
+      products,
+      totalPages: Math.ceil(totalProducts / limit),
+      currentPage: parseInt(page),
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar produtos.", error });
+  }
 });
 
 app.listen(3000, () => {
