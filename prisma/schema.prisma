@@ -20,13 +20,13 @@ model Admin {
 }
 
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
   name      String
-  email     String   @unique
+  email     String     @unique
   password  String
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
+  purchases Purchase[] // Relacionamento com Purchases
 }
-
 
 model Post {
   id      String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -36,6 +36,16 @@ model Post {
   date_time DateTime @default(now())
 }
 
+model Purchase {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String
+  productId String
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+
 model Product {
   id          String        @id @default(auto()) @map("_id") @db.ObjectId
   title       String
@@ -43,8 +53,9 @@ model Product {
   image_url   String?
   price       Float 
   date_time   DateTime      @default(now())
-  reviews     Review[]
-  comments    Comment[]
+  reviews     Review[]      // Relacionamento com Reviews
+  comments    Comment[]     // Relacionamento com Comments
+  purchases   Purchase[]    // Relacionamento com Purchases
 }
 
 model Review {

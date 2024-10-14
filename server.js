@@ -5,6 +5,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { storage } from "./multerConfig.js";
 import { PrismaClient } from "@prisma/client";
+import {
+  verifyToken,
+  isAdmin,
+  isUser,
+  hasPurchased,
+} from "./middlewares/authMiddleware.js";
 
 const upload = multer({ storage: storage });
 const prisma = new PrismaClient();
@@ -15,6 +21,11 @@ app.use(cors());
 app.use("/uploads", express.static("uploads"));
 
 const JWT_SECRET = "j/1~oe9zH>t]0rzq{XTFJ'K(EjxDZ7";
+
+// ENDPOINT VERIFICAÇÃO ADMINISTRADOR
+app.get("/api/check-admin", verifyToken, isAdmin, (req, res) => {
+  res.status(200).json({ isAdmin: true });
+});
 
 // ENDPOINT REGISTRO
 app.post("/register", async (req, res) => {
@@ -39,6 +50,17 @@ app.post("/register", async (req, res) => {
       password: hashedPassword,
     },
   });
+
+  // Gera o token JWT
+  const token = jwt.sign(
+    {
+      userId: newUser.id,
+      role: "user",
+      name: newUser.name,
+    },
+    JWT_SECRET,
+    { expiresIn: "1h" }
+  );
 
   res.status(201).json({ message: "Usuário registrado com sucesso!", newUser });
 });
@@ -73,7 +95,7 @@ app.post("/login", async (req, res) => {
     {
       userId: admin ? admin.id : user.id,
       role: userType,
-      name: user ? user.name : admin.name,
+      name: admin ? admin.name : user.name,
     },
     JWT_SECRET,
     { expiresIn: "1h" }
@@ -85,20 +107,26 @@ app.post("/login", async (req, res) => {
 });
 
 // ENDPOINT POSTAGEM
-app.post("/posts", upload.single("file"), async (req, res) => {
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+app.post(
+  "/posts",
+  verifyToken,
+  isAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
 
-  const newPost = await prisma.post.create({
-    data: {
-      title: req.body.title,
-      desc: req.body.desc,
-      image_url: imagePath,
-      date_time: new Date(req.body.date_time),
-    },
-  });
+    const newPost = await prisma.post.create({
+      data: {
+        title: req.body.title,
+        desc: req.body.desc,
+        image_url: imagePath,
+        date_time: new Date(req.body.date_time),
+      },
+    });
 
-  res.status(201).json(newPost);
-});
+    res.status(201).json(newPost);
+  }
+);
 
 app.get("/posts", async (req, res) => {
   const posts = await prisma.post.findMany();
@@ -119,31 +147,37 @@ app.put("/posts/:id", async (req, res) => {
   res.status(201).json(updatedPost);
 });
 
-app.delete("/posts/:id", async (req, res) => {
+app.delete("/posts/:id", verifyToken, isAdmin, async (req, res) => {
   await prisma.post.delete({ where: { id: req.params.id } });
   res.status(200).json({ message: "Deletado com sucesso!" });
 });
 
 // ENDPOINT PRODUTO
-app.post("/products", upload.single("file"), async (req, res) => {
-  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+app.post(
+  "/products",
+  verifyToken,
+  isAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
 
-  const newProduct = await prisma.product.create({
-    data: {
-      title: req.body.title,
-      desc: req.body.desc,
-      image_url: imagePath,
-      price: parseFloat(req.body.price),
-      date_time: new Date(req.body.date_time),
-    },
-  });
+    const newProduct = await prisma.product.create({
+      data: {
+        title: req.body.title,
+        desc: req.body.desc,
+        image_url: imagePath,
+        price: parseFloat(req.body.price),
+        date_time: new Date(req.body.date_time),
+      },
+    });
 
-  res.status(201).json(newProduct);
-});
+    res.status(201).json(newProduct);
+  }
+);
 
-app.get("/products", async (req, res) => {
+app.get("/products", verifyToken, async (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 12; // 3 linhas x 3 produtos por linha = 9 produtos
+  const limit = parseInt(req.query.limit) || 12;
 
   const products = await prisma.product.findMany({
     skip: (page - 1) * limit,
@@ -154,7 +188,7 @@ app.get("/products", async (req, res) => {
     },
   });
 
-  const totalProducts = await prisma.product.count(); // Conta total de produtos
+  const totalProducts = await prisma.product.count();
   const totalPages = Math.ceil(totalProducts / limit);
 
   res.status(200).json({
@@ -179,24 +213,49 @@ app.put("/products/:id", async (req, res) => {
   res.status(201).json(updatedProduct);
 });
 
-app.delete("/products/:id", async (req, res) => {
+app.delete("/products/:id", verifyToken, isAdmin, async (req, res) => {
   await prisma.product.delete({ where: { id: req.params.id } });
   res.status(200).json({ message: "Produto deletado com sucesso!" });
 });
 
-// ENDPOINT AVALIAÇÃO
-app.post("/products/:id/reviews", async (req, res) => {
-  const { rating } = req.body;
+// ENDPOINT PRODUTO DETALHES
 
-  const newReview = await prisma.review.create({
-    data: {
-      rating: parseInt(rating),
-      productId: req.params.id,
-    },
-  });
+app.get("/product/:id", async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.id },
+    });
 
-  res.status(201).json(newReview);
+    if (!product) {
+      return res.status(404).json({ message: "Produto não encontrado." });
+    }
+
+    res.status(200).json(product);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar o produto.", error });
+  }
 });
+
+// ENDPOINT AVALIAÇÃO
+app.post(
+  "/products/:id/reviews",
+  verifyToken,
+  isUser,
+  hasPurchased,
+  async (req, res) => {
+    const { rating } = req.body;
+
+    const newReview = await prisma.review.create({
+      data: {
+        rating: parseInt(rating),
+        productId: req.params.id,
+        userId: req.user.userId,
+      },
+    });
+
+    res.status(201).json(newReview);
+  }
+);
 
 app.get("/products/:id/reviews", async (req, res) => {
   const reviews = await prisma.review.findMany({
@@ -207,18 +266,25 @@ app.get("/products/:id/reviews", async (req, res) => {
 });
 
 // ENDPOINT COMENTÁRIOS
-app.post("/products/:id/comments", async (req, res) => {
-  const { text } = req.body;
+app.post(
+  "/products/:id/comments",
+  verifyToken,
+  isUser,
+  hasPurchased,
+  async (req, res) => {
+    const { text } = req.body;
 
-  const newComment = await prisma.comment.create({
-    data: {
-      text,
-      productId: req.params.id,
-    },
-  });
+    const newComment = await prisma.comment.create({
+      data: {
+        text,
+        productId: req.params.id,
+        userId: req.user.userId,
+      },
+    });
 
-  res.status(201).json(newComment);
-});
+    res.status(201).json(newComment);
+  }
+);
 
 app.get("/products/:id/comments", async (req, res) => {
   const comments = await prisma.comment.findMany({
@@ -230,9 +296,9 @@ app.get("/products/:id/comments", async (req, res) => {
 
 // ENDPOINT PESQUISAR PRODUTOS
 app.get("/products/search", async (req, res) => {
-  const { query, page = 1, limit = 10 } = req.query;
+  const { query, page = 1, limit = 12 } = req.query;
 
-  // Defina os parâmetros de paginação
+  // Define os parâmetros de paginação
   const skip = (page - 1) * limit;
   const take = parseInt(limit);
 
@@ -291,4 +357,85 @@ app.get("/products/search", async (req, res) => {
 
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
+});
+
+// ENDPOINT ADICIONAR AO CARRINHO
+app.post("/cart/add", verifyToken, isUser, async (req, res) => {
+  const { productId } = req.body;
+
+  if (!productId) {
+    return res.status(400).json({ message: "productId é obrigatório" });
+  }
+
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      return res.status(404).json({ message: "Produto não encontrado" });
+    }
+
+    // Adiciona o produto ao carrinho do usuário
+    const cartItem = await prisma.cartItem.create({
+      data: {
+        productId: product.id,
+        userId: req.user.userId,
+        quantity: 1,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Produto adicionado ao carrinho",
+      cartItem,
+    });
+  } catch (error) {
+    console.error("Erro ao adicionar ao carrinho:", error);
+
+    return res
+      .status(500)
+      .json({ message: "Erro ao adicionar ao carrinho", error: error.message });
+  }
+});
+
+app.get("/cart", verifyToken, isUser, async (req, res) => {
+  try {
+    // Busca os itens do carrinho do usuário
+    const cartItems = await prisma.cartItem.findMany({
+      where: { userId: req.user.userId },
+      include: {
+        product: true,
+      },
+    });
+
+    res.status(200).json(cartItems);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao obter carrinho", error });
+  }
+});
+
+app.delete("/cart/remove/:id", verifyToken, isUser, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Verifica se o item do carrinho existe
+    const cartItem = await prisma.cartItem.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!cartItem) {
+      return res
+        .status(404)
+        .json({ message: "Item do carrinho não encontrado" });
+    }
+
+    // Remove o item do carrinho
+    await prisma.cartItem.delete({
+      where: { id: parseInt(id) },
+    });
+
+    res.status(200).json({ message: "Item removido do carrinho com sucesso!" });
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao remover do carrinho", error });
+  }
 });
