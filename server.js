@@ -361,47 +361,43 @@ app.listen(3000, () => {
 
 // ENDPOINT ADICIONAR AO CARRINHO
 app.post("/cart/add", verifyToken, isUser, async (req, res) => {
-  const { productId } = req.body;
-
-  if (!productId) {
-    return res.status(400).json({ message: "productId é obrigatório" });
-  }
+  const { productId } = req.body; // Recebe o productId do frontend
+  const userId = req.user.userId; // Obtém o ID do usuário logado
 
   try {
+    // Verifica se o produto existe
     const product = await prisma.product.findUnique({
       where: { id: productId },
     });
 
     if (!product) {
-      return res.status(404).json({ message: "Produto não encontrado" });
+      return res.status(404).json({ message: "Produto não encontrado." });
     }
 
-    // Adiciona o produto ao carrinho do usuário
-    const cartItem = await prisma.cartItem.create({
+    // Adiciona o produto ao carrinho
+    const cartItem = await prisma.purchase.create({
       data: {
-        productId: product.id,
-        userId: req.user.userId,
-        quantity: 1,
+        userId: userId, // Associa o item ao usuário logado
+        productId: product.id, // Associa o item ao produto
+        title: product.title, // Título do produto
+        image_url: product.image_url, // Imagem do produto
+        price: product.price, // Preço do produto
       },
     });
 
-    return res.status(200).json({
-      message: "Produto adicionado ao carrinho",
-      cartItem,
-    });
+    res
+      .status(201)
+      .json({ message: "Produto adicionado ao carrinho!", cartItem });
   } catch (error) {
     console.error("Erro ao adicionar ao carrinho:", error);
-
-    return res
-      .status(500)
-      .json({ message: "Erro ao adicionar ao carrinho", error: error.message });
+    res.status(500).json({ message: "Erro ao adicionar ao carrinho.", error });
   }
 });
 
 app.get("/cart", verifyToken, isUser, async (req, res) => {
   try {
     // Busca os itens do carrinho do usuário
-    const cartItems = await prisma.cartItem.findMany({
+    const cartItems = await prisma.purchase.findMany({
       where: { userId: req.user.userId },
       include: {
         product: true,
@@ -419,7 +415,7 @@ app.delete("/cart/remove/:id", verifyToken, isUser, async (req, res) => {
 
   try {
     // Verifica se o item do carrinho existe
-    const cartItem = await prisma.cartItem.findUnique({
+    const cartItem = await prisma.purchase.findUnique({
       where: { id: parseInt(id) },
     });
 

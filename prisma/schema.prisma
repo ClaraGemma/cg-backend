@@ -42,6 +42,9 @@ model Purchase {
   productId String
   user      User     @relation(fields: [userId], references: [id])
   product   Product  @relation(fields: [productId], references: [id])
+  title     String
+  image_url String
+  price     Float
   createdAt DateTime @default(now())
 }
 
