@@ -27,12 +27,12 @@ Este projeto tem como objetivo fornecer uma API para gerenciamento de dados do w
 
 1. Clone o repositório:
     ```bash
-    git clone https://github.com/seu-usuario/seu-repositorio.git
+    git clone https://github.com/ClaraGemma/cg-backend.git
     ```
 
 2. Navegue até o diretório do projeto:
     ```bash
-    cd seu-repositorio
+    cd nome-do-diretório
     ```
 
 3. Instale as dependências:
