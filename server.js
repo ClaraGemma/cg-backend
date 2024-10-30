@@ -107,26 +107,20 @@ app.post("/login", async (req, res) => {
 });
 
 // ENDPOINT POSTAGEM
-app.post(
-  "/posts",
-  verifyToken,
-  isAdmin,
-  upload.single("file"),
-  async (req, res) => {
-    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+app.post("/posts", upload.single("file"), async (req, res) => {
+  const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
 
-    const newPost = await prisma.post.create({
-      data: {
-        title: req.body.title,
-        desc: req.body.desc,
-        image_url: imagePath,
-        date_time: new Date(req.body.date_time),
-      },
-    });
+  const newPost = await prisma.post.create({
+    data: {
+      title: req.body.title,
+      desc: req.body.desc,
+      image_url: imagePath,
+      date_time: new Date(req.body.date_time),
+    },
+  });
 
-    res.status(201).json(newPost);
-  }
-);
+  res.status(201).json(newPost);
+});
 
 app.get("/posts", async (req, res) => {
   const posts = await prisma.post.findMany();
@@ -147,7 +141,7 @@ app.put("/posts/:id", async (req, res) => {
   res.status(201).json(updatedPost);
 });
 
-app.delete("/posts/:id", verifyToken, isAdmin, async (req, res) => {
+app.delete("/posts/:id", async (req, res) => {
   await prisma.post.delete({ where: { id: req.params.id } });
   res.status(200).json({ message: "Deletado com sucesso!" });
 });
@@ -175,7 +169,7 @@ app.post(
   }
 );
 
-app.get("/products", verifyToken, async (req, res) => {
+app.get("/products", async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 12;
 
