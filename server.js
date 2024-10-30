@@ -207,7 +207,7 @@ app.put("/products/:id", async (req, res) => {
   res.status(201).json(updatedProduct);
 });
 
-app.delete("/products/:id", verifyToken, isAdmin, async (req, res) => {
+app.delete("/products/:id", async (req, res) => {
   await prisma.product.delete({ where: { id: req.params.id } });
   res.status(200).json({ message: "Produto deletado com sucesso!" });
 });
@@ -251,15 +251,33 @@ app.post(
   }
 );
 
+// ENDPOINT PARA OBTER AS AVALIAÇÕES DO PRODUTO
 app.get("/products/:id/reviews", async (req, res) => {
-  const reviews = await prisma.review.findMany({
-    where: { productId: req.params.id },
-  });
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { productId: req.params.id },
+      include: {
+        user: {
+          select: { name: true }, // Inclui o nome do usuário que fez a avaliação
+        },
+      },
+    });
 
-  res.status(200).json(reviews);
+    res.status(200).json(reviews);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar avaliações.", error });
+  }
 });
 
 // ENDPOINT COMENTÁRIOS
+app.get("/products/:id/comments", async (req, res) => {
+  const comments = await prisma.comment.findMany({
+    where: { productId: req.params.id },
+  });
+
+  res.status(200).json(comments);
+});
+
 app.post(
   "/products/:id/comments",
   verifyToken,
@@ -279,14 +297,6 @@ app.post(
     res.status(201).json(newComment);
   }
 );
-
-app.get("/products/:id/comments", async (req, res) => {
-  const comments = await prisma.comment.findMany({
-    where: { productId: req.params.id },
-  });
-
-  res.status(200).json(comments);
-});
 
 // ENDPOINT PESQUISAR PRODUTOS
 app.get("/products/search", async (req, res) => {
@@ -405,12 +415,12 @@ app.get("/cart", verifyToken, isUser, async (req, res) => {
 });
 
 app.delete("/cart/remove/:id", verifyToken, isUser, async (req, res) => {
-  const { id } = req.params;
+  const itemId = req.params.id;
 
   try {
     // Verifica se o item do carrinho existe
     const cartItem = await prisma.purchase.findUnique({
-      where: { id: parseInt(id) },
+      where: { itemId: parseInt(itemId) },
     });
 
     if (!cartItem) {
@@ -421,11 +431,61 @@ app.delete("/cart/remove/:id", verifyToken, isUser, async (req, res) => {
 
     // Remove o item do carrinho
     await prisma.cartItem.delete({
-      where: { id: parseInt(id) },
+      where: { itemId: parseInt(itemId) },
     });
 
     res.status(200).json({ message: "Item removido do carrinho com sucesso!" });
   } catch (error) {
     res.status(500).json({ message: "Erro ao remover do carrinho", error });
   }
+});
+
+// ENDPOINT ATUALIZAR INFO USUARIOS
+app.get("/user", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado." });
+    }
+
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar usuário.", error });
+  }
+});
+
+app.put("/user/update", verifyToken, async (req, res) => {
+  const { userId } = req.user;
+  const { name, currentPassword, newPassword } = req.body;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    return res.status(404).json({ message: "Usuário não encontrado." });
+  }
+
+  const isCurrentPasswordValid = await bcrypt.compare(
+    currentPassword,
+    user.password
+  );
+  if (!isCurrentPasswordValid) {
+    return res.status(401).json({ message: "Senha atual inválida." });
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      name: name,
+      password: await bcrypt.hash(newPassword, 10),
+    },
+  });
+
+  res.status(200).json({ message: "Usuário atualizado com sucesso." });
 });

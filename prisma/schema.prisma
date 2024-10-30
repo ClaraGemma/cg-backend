@@ -14,8 +14,8 @@ datasource db {
 }
 
 model Admin {
-  id       String   @id @default(auto()) @map("_id") @db.ObjectId
-  email    String   @unique
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  email    String @unique
   password String
 }
 
@@ -25,13 +25,15 @@ model User {
   email     String     @unique
   password  String
   createdAt DateTime   @default(now())
-  purchases Purchase[] // Relacionamento com Purchases
+  purchases Purchase[]
+  reviews   Review[] // Relacionamento com Reviews
+  comments  Comment[] // Relacionamento com Comments
 }
 
 model Post {
-  id      String   @id @default(auto()) @map("_id") @db.ObjectId
-  title   String   
-  desc    String
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  desc      String
   image_url String?
   date_time DateTime @default(now())
 }
@@ -48,30 +50,34 @@ model Purchase {
   createdAt DateTime @default(now())
 }
 
-
 model Product {
-  id          String        @id @default(auto()) @map("_id") @db.ObjectId
-  title       String
-  desc        String
-  image_url   String?
-  price       Float 
-  date_time   DateTime      @default(now())
-  reviews     Review[]      // Relacionamento com Reviews
-  comments    Comment[]     // Relacionamento com Comments
-  purchases   Purchase[]    // Relacionamento com Purchases
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  desc      String
+  image_url String?
+  price     Float
+  date_time DateTime   @default(now())
+  reviews   Review[] // Relacionamento com Reviews
+  comments  Comment[] // Relacionamento com Comments
+  purchases Purchase[] // Relacionamento com Purchases
 }
 
 model Review {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  rating    Int      
-  product   Product  @relation(fields: [productId], references: [id])
-  productId String   @db.ObjectId
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  rating    Int
+  comment   String? // Comentário adicional ao rating
+  userId    String // Associar o Review a um User
+  productId String  @db.ObjectId
+  user      User    @relation(fields: [userId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 }
 
 model Comment {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   text      String
-  product   Product  @relation(fields: [productId], references: [id])
+  userId    String
   productId String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
   date_time DateTime @default(now())
 }
