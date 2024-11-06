@@ -4,6 +4,7 @@ import multer from "multer";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { storage } from "./multerConfig.js";
+import reviewRoutes from "./routes/reviewRoutes.js";
 import { PrismaClient } from "@prisma/client";
 import {
   verifyToken,
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cors());
 app.use("/uploads", express.static("uploads"));
+app.use("/reviews", reviewRoutes);
 
 const JWT_SECRET = "j/1~oe9zH>t]0rzq{XTFJ'K(EjxDZ7";
 
@@ -237,17 +239,25 @@ app.post(
   isUser,
   hasPurchased,
   async (req, res) => {
-    const { rating } = req.body;
+    const { rating, comment } = req.body;
 
     const newReview = await prisma.review.create({
       data: {
         rating: parseInt(rating),
+        comment,
         productId: req.params.id,
         userId: req.user.userId,
       },
     });
 
-    res.status(201).json(newReview);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+    });
+
+    res.status(201).json({
+      ...newReview,
+      userName: user.name,
+    });
   }
 );
 
@@ -414,29 +424,52 @@ app.get("/cart", verifyToken, isUser, async (req, res) => {
   }
 });
 
-app.delete("/cart/remove/:id", verifyToken, isUser, async (req, res) => {
-  const itemId = req.params.id;
+app.delete("/cart/remove/:productId", verifyToken, isUser, async (req, res) => {
+  const { productId } = req.params;
+  const userId = req.user.userId;
 
   try {
-    // Verifica se o item do carrinho existe
-    const cartItem = await prisma.purchase.findUnique({
-      where: { itemId: parseInt(itemId) },
+    const cartItem = await prisma.purchase.findFirst({
+      where: {
+        productId: productId,
+        userId: userId,
+      },
     });
 
     if (!cartItem) {
       return res
         .status(404)
-        .json({ message: "Item do carrinho não encontrado" });
+        .json({ message: "Item não encontrado no carrinho." });
     }
 
-    // Remove o item do carrinho
-    await prisma.cartItem.delete({
-      where: { itemId: parseInt(itemId) },
+    await prisma.purchase.delete({
+      where: {
+        id: cartItem.id, // Usa o ID do item encontrado no carrinho
+      },
     });
 
-    res.status(200).json({ message: "Item removido do carrinho com sucesso!" });
+    res.status(200).json({ message: "Item removido do carrinho com sucesso." });
   } catch (error) {
-    res.status(500).json({ message: "Erro ao remover do carrinho", error });
+    console.error("Erro ao remover item do carrinho:", error);
+    res
+      .status(500)
+      .json({ message: "Erro ao remover item do carrinho.", error });
+  }
+});
+
+// Endpoint para limpar o carrinho
+app.delete("/cart/clear", verifyToken, async (req, res) => {
+  try {
+    // Remover todos os itens do carrinho do usuário logado
+    await prisma.purchase.deleteMany({
+      where: {
+        userId: req.user.userId, // Assume que o token inclui o userId
+      },
+    });
+    res.status(200).json({ message: "Carrinho limpo com sucesso." });
+  } catch (error) {
+    console.error("Erro ao limpar o carrinho:", error);
+    res.status(500).json({ message: "Erro ao limpar o carrinho." });
   }
 });
 

@@ -6,12 +6,22 @@ const prisma = new PrismaClient();
 
 // Middleware para verificar o token JWT
 export const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(403).json({ message: "Token não fornecido" });
+  const token = req.headers["authorization"]?.split(" ")[1]; // Pega o token do cabeçalho Authorization
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(401).json({ message: "Token inválido" });
-    req.user = user;
+  if (!token) {
+    return res.status(401).json({ message: "Acesso não autorizado." });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ message: "Token inválido." });
+    }
+
+    req.user = {
+      userId: decoded.userId,
+      role: decoded.role,
+      name: decoded.name,
+    };
     next();
   });
 };
