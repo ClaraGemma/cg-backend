@@ -375,8 +375,8 @@ app.listen(3000, () => {
 
 // ENDPOINT ADICIONAR AO CARRINHO
 app.post("/cart/add", verifyToken, isUser, async (req, res) => {
-  const { productId } = req.body; // Recebe o productId do frontend
-  const userId = req.user.userId; // Obtém o ID do usuário logado
+  const { productId, quantity, color, size } = req.body; // Extraindo as variáveis do corpo da requisição
+  const userId = req.user.userId;
 
   try {
     // Verifica se o produto existe
@@ -388,14 +388,25 @@ app.post("/cart/add", verifyToken, isUser, async (req, res) => {
       return res.status(404).json({ message: "Produto não encontrado." });
     }
 
+    // Validação: Verifica se a quantidade, cor e tamanho foram fornecidos
+    if (!quantity || !color || !size) {
+      return res.status(400).json({
+        message:
+          "Por favor, forneça todos os detalhes: quantidade, cor e tamanho.",
+      });
+    }
+
     // Adiciona o produto ao carrinho
     const cartItem = await prisma.purchase.create({
       data: {
-        userId: userId, // Associa o item ao usuário logado
-        productId: product.id, // Associa o item ao produto
-        title: product.title, // Título do produto
-        image_url: product.image_url, // Imagem do produto
-        price: product.price, // Preço do produto
+        userId: userId,
+        productId: product.id,
+        title: product.title,
+        image_url: product.image_url,
+        price: product.price,
+        quantity: quantity,
+        color: color,
+        size: size,
       },
     });
 
@@ -424,8 +435,9 @@ app.get("/cart", verifyToken, isUser, async (req, res) => {
   }
 });
 
+//Endpoint para remover o item especifico do carrinho
 app.delete("/cart/remove/:productId", verifyToken, isUser, async (req, res) => {
-  const { productId } = req.params;
+  const { productId } = req.params.productId;
   const userId = req.user.userId;
 
   try {
@@ -470,6 +482,51 @@ app.delete("/cart/clear", verifyToken, async (req, res) => {
   } catch (error) {
     console.error("Erro ao limpar o carrinho:", error);
     res.status(500).json({ message: "Erro ao limpar o carrinho." });
+  }
+});
+
+// ENDPOINT PARA ATUALIZAR A QUANTIDADE DO ITEM NO CARRINHO
+app.put("/cart/update/:productId", verifyToken, isUser, async (req, res) => {
+  const { quantity } = req.body;
+  const userId = req.user.userId;
+  const productId = req.params.productId;
+
+  try {
+    if (!quantity || quantity <= 0) {
+      return res
+        .status(400)
+        .json({ message: "A quantidade deve ser maior que zero." });
+    }
+
+    const cartItem = await prisma.purchase.findFirst({
+      where: {
+        userId: userId,
+        productId: productId,
+      },
+    });
+
+    if (!cartItem) {
+      return res
+        .status(404)
+        .json({ message: "Produto não encontrado no carrinho." });
+    }
+
+    const updatedCartItem = await prisma.purchase.update({
+      where: {
+        id: cartItem.id,
+      },
+      data: {
+        quantity: quantity,
+      },
+    });
+
+    res.status(200).json({
+      message: "Quantidade do item no carrinho atualizada.",
+      updatedCartItem,
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar quantidade no carrinho:", error);
+    res.status(500).json({ message: "Erro ao atualizar a quantidade.", error });
   }
 });
 

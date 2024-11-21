@@ -37,6 +37,9 @@ model Purchase {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   userId    String
   productId String
+  quantity  Int?      // Quantidade comprada
+  color     String?  // Cor escolhida pelo usuário
+  size      String?  // Tamanho escolhido pelo usuário
   user      User     @relation(fields: [userId], references: [id])
   product   Product  @relation(fields: [productId], references: [id])
   title     String
@@ -51,9 +54,12 @@ model Product {
   desc      String
   image_url String?
   price     Float
+  quantity  Int?        // Quantidade de unidades disponíveis
+  color     String?    // Cor do produto (ou pode ser uma lista de opções)
+  size      String?    // Tamanho do produto (ou pode ser uma lista de opções)
   date_time DateTime   @default(now())
-  reviews   Review[] // Relacionamento com Reviews
-  comments  Comment[] // Relacionamento com Comments
+  reviews   Review[]   // Relacionamento com Reviews
+  comments  Comment[]  // Relacionamento com Comments
   purchases Purchase[] // Relacionamento com Purchases
 }
 
