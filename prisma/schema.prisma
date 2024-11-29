@@ -21,8 +21,9 @@ model User {
   password  String
   createdAt DateTime   @default(now())
   purchases Purchase[]
-  reviews   Review[] // Relacionamento com Reviews
-  comments  Comment[] // Relacionamento com Comments
+  reviews   Review[]
+  comments  Comment[]
+  orders    Order[]
 }
 
 model Post {
@@ -33,44 +34,60 @@ model Post {
   date_time DateTime @default(now())
 }
 
-model Purchase {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String
-  productId String
-  quantity  Int?      // Quantidade comprada
-  color     String?  // Cor escolhida pelo usuário
-  size      String?  // Tamanho escolhido pelo usuário
-  user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
-  title     String
-  image_url String
-  price     Float
-  createdAt DateTime @default(now())
-}
 
 model Product {
   id        String     @id @default(auto()) @map("_id") @db.ObjectId
   title     String
   desc      String
-  image_url String?
-  price     Float
-  quantity  Int?        // Quantidade de unidades disponíveis
-  color     String?    // Cor do produto (ou pode ser uma lista de opções)
-  size      String?    // Tamanho do produto (ou pode ser uma lista de opções)
   date_time DateTime   @default(now())
-  reviews   Review[]   // Relacionamento com Reviews
-  comments  Comment[]  // Relacionamento com Comments
-  purchases Purchase[] // Relacionamento com Purchases
+
+  sizes       Size[]   
+  colors      Color[]
+  reviews     Review[]
+  comments    Comment[]
+  purchases   Purchase[]
+  orderItems  OrderItem[]
+}
+
+model Size {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String   @db.ObjectId
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size        String
+  price       Float
+}
+
+model Color {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String   @db.ObjectId
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color       String
+  image_url   String?
+}
+
+model Purchase {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId String
+  title     String
+  image_url String
+  price     Float
+  quantity  Int?
+  color     String?
+  size      String?
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 model Review {
   id        String  @id @default(auto()) @map("_id") @db.ObjectId
   rating    Int
-  comment   String? // Comentário adicional ao rating
-  userId    String // Associar o Review a um User
+  comment   String?
+  userId    String
   productId String  @db.ObjectId
   user      User    @relation(fields: [userId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Comment {
@@ -79,6 +96,33 @@ model Comment {
   userId    String
   productId String   @db.ObjectId
   user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   date_time DateTime @default(now())
+}
+
+
+model Order {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  protocol    String      @unique
+  userId      String?
+  user        User?        @relation(fields: [userId], references: [id])
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  totalPrice  Float       // Preço total do pedido
+  status String @default("Pendente")
+
+}
+
+model OrderItem {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId     String
+  productId   String?
+  title       String
+  quantity    Int
+  color       String
+  size        String
+  price       Float
+  totalPrice Float
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order       Order    @relation(fields: [orderId], references: [id])
 }

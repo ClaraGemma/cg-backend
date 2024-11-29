@@ -16,6 +16,7 @@ import {
 const upload = multer({ storage: storage });
 const prisma = new PrismaClient();
 const app = express();
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cors());
@@ -29,7 +30,7 @@ app.get("/api/check-admin", verifyToken, isAdmin, (req, res) => {
   res.status(200).json({ isAdmin: true });
 });
 
-// ENDPOINT REGISTRO
+// ENDPOINT POST REGISTRO
 app.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -41,10 +42,10 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "E-mail já cadastrado." });
   }
 
-  // Criptografa a senha
+  // Criptografando a senha
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Cria o novo usuário no banco de dados
+  // Criando novo usuário no banco de dados
   const newUser = await prisma.user.create({
     data: {
       name,
@@ -53,7 +54,7 @@ app.post("/register", async (req, res) => {
     },
   });
 
-  // Gera o token JWT
+  // Gerando token JWT
   const token = jwt.sign(
     {
       userId: newUser.id,
@@ -67,7 +68,7 @@ app.post("/register", async (req, res) => {
   res.status(201).json({ message: "Usuário registrado com sucesso!", newUser });
 });
 
-// ENDPOINT LOGIN
+// ENDPOINT POST LOGIN
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -108,7 +109,7 @@ app.post("/login", async (req, res) => {
     .json({ token, role: userType, name: user ? user.name : admin.name });
 });
 
-// ENDPOINT POSTAGEM
+// ENDPOINT POST POSTAGEM
 app.post("/posts", upload.single("file"), async (req, res) => {
   const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
 
@@ -124,11 +125,13 @@ app.post("/posts", upload.single("file"), async (req, res) => {
   res.status(201).json(newPost);
 });
 
+// ENDPOINT GET POSTAGEM
 app.get("/posts", async (req, res) => {
   const posts = await prisma.post.findMany();
   res.status(200).json(posts);
 });
 
+// ENDPOINT PUT POSTAGEM
 app.put("/posts/:id", async (req, res) => {
   const updatedPost = await prisma.post.update({
     where: { id: req.params.id },
@@ -143,57 +146,102 @@ app.put("/posts/:id", async (req, res) => {
   res.status(201).json(updatedPost);
 });
 
+// ENDPOINT DELETE POSTAGEM
 app.delete("/posts/:id", async (req, res) => {
   await prisma.post.delete({ where: { id: req.params.id } });
   res.status(200).json({ message: "Deletado com sucesso!" });
 });
 
-// ENDPOINT PRODUTO
+// ENDPOINT POST PRODUTOS
 app.post(
   "/products",
   verifyToken,
   isAdmin,
-  upload.single("file"),
+  upload.array("files"), // Para múltiplas imagens
   async (req, res) => {
-    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+    const { title, desc, sizes, colors, date_time } = req.body;
+    console.log("Body recebido:", req.body);
+    console.log("Arquivos recebidos no backend:", req.files);
 
-    const newProduct = await prisma.product.create({
-      data: {
-        title: req.body.title,
-        desc: req.body.desc,
-        image_url: imagePath,
-        price: parseFloat(req.body.price),
-        date_time: new Date(req.body.date_time),
-      },
-    });
+    try {
+      // Criação do produto principal
+      const newProduct = await prisma.product.create({
+        data: {
+          title,
+          desc,
+          date_time: new Date(date_time),
+        },
+      });
 
-    res.status(201).json(newProduct);
+      // Adiciona os tamanhos com preços
+      const parsedSizes = JSON.parse(sizes); // Enviar como string JSON
+      await Promise.all(
+        parsedSizes.map((size) =>
+          prisma.size.create({
+            data: {
+              productId: newProduct.id,
+              size: size.size,
+              price: parseFloat(size.price),
+            },
+          })
+        )
+      );
+
+      // Adiciona as cores com imagens
+      const parsedColors = JSON.parse(colors);
+      await Promise.all(
+        parsedColors.map((color, index) =>
+          prisma.color.create({
+            data: {
+              productId: newProduct.id,
+              color: color.color,
+              image_url: req.files[index]
+                ? `/uploads/${req.files[index].filename}`
+                : null,
+            },
+          })
+        )
+      );
+
+      res.status(201).json({ message: "Produto criado com sucesso!" });
+    } catch (error) {
+      console.error("Erro ao criar produto:", error);
+      res.status(500).json({ message: "Erro ao criar produto." });
+    }
   }
 );
 
+// ENDPOINT GET TODOS OS PRODUTOS COM PAGINAÇÃO
 app.get("/products", async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 12;
+  const { page = 1, limit = 10 } = req.query;
 
-  const products = await prisma.product.findMany({
-    skip: (page - 1) * limit,
-    take: limit,
-    include: {
-      reviews: true,
-      comments: true,
-    },
-  });
+  try {
+    // Converte os parâmetros para números
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
 
-  const totalProducts = await prisma.product.count();
-  const totalPages = Math.ceil(totalProducts / limit);
+    // Busca os produtos com paginação
+    const products = await prisma.product.findMany({
+      skip: (pageNumber - 1) * limitNumber,
+      take: limitNumber,
+      include: {
+        sizes: true,
+        colors: true,
+      },
+    });
 
-  res.status(200).json({
-    products,
-    totalPages,
-    currentPage: page,
-  });
+    // Conta o total de produtos
+    const totalProducts = await prisma.product.count();
+    const totalPages = Math.ceil(totalProducts / limitNumber);
+
+    res.status(200).json({ products, totalPages });
+  } catch (error) {
+    console.error("Erro ao buscar produtos:", error);
+    res.status(500).json({ message: "Erro ao buscar produtos." });
+  }
 });
 
+// ENDPOINT PUT PRODUTO
 app.put("/products/:id", async (req, res) => {
   const updatedProduct = await prisma.product.update({
     where: { id: req.params.id },
@@ -209,17 +257,36 @@ app.put("/products/:id", async (req, res) => {
   res.status(201).json(updatedProduct);
 });
 
+// ENDPOINT DELETE PRODUTO DETALHES
 app.delete("/products/:id", async (req, res) => {
-  await prisma.product.delete({ where: { id: req.params.id } });
-  res.status(200).json({ message: "Produto deletado com sucesso!" });
+  const { id } = req.params;
+
+  try {
+    const product = await prisma.product.delete({
+      where: {
+        id: id,
+      },
+    });
+
+    res.json({ message: "Produto deletado com sucesso!", product });
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "Erro ao deletar produto", error: error.message });
+  }
 });
 
-// ENDPOINT PRODUTO DETALHES
-
+// ENDPOINT GET PRODUTO DETALHES
 app.get("/product/:id", async (req, res) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
+      include: {
+        sizes: true, // Incluir tamanhos
+        colors: true, // Incluir cores
+        reviews: true, // Incluir avaliações
+      },
     });
 
     if (!product) {
@@ -232,7 +299,7 @@ app.get("/product/:id", async (req, res) => {
   }
 });
 
-// ENDPOINT AVALIAÇÃO
+// ENDPOINT POST AVALIAÇÃO
 app.post(
   "/products/:id/reviews",
   verifyToken,
@@ -261,14 +328,14 @@ app.post(
   }
 );
 
-// ENDPOINT PARA OBTER AS AVALIAÇÕES DO PRODUTO
+// ENDPOINT GET AVALIAÇÃO
 app.get("/products/:id/reviews", async (req, res) => {
   try {
     const reviews = await prisma.review.findMany({
       where: { productId: req.params.id },
       include: {
         user: {
-          select: { name: true }, // Inclui o nome do usuário que fez a avaliação
+          select: { name: true },
         },
       },
     });
@@ -279,7 +346,7 @@ app.get("/products/:id/reviews", async (req, res) => {
   }
 });
 
-// ENDPOINT COMENTÁRIOS
+// ENDPOINT GET COMENTÁRIOS
 app.get("/products/:id/comments", async (req, res) => {
   const comments = await prisma.comment.findMany({
     where: { productId: req.params.id },
@@ -288,6 +355,7 @@ app.get("/products/:id/comments", async (req, res) => {
   res.status(200).json(comments);
 });
 
+// ENDPOINT POST COMENTÁRIOS
 app.post(
   "/products/:id/comments",
   verifyToken,
@@ -308,7 +376,7 @@ app.post(
   }
 );
 
-// ENDPOINT PESQUISAR PRODUTOS
+// ENDPOINT GET PESQUISAR PRODUTOS
 app.get("/products/search", async (req, res) => {
   const { query, page = 1, limit = 12 } = req.query;
 
@@ -373,22 +441,24 @@ app.listen(3000, () => {
   console.log("Server is running on port 3000");
 });
 
-// ENDPOINT ADICIONAR AO CARRINHO
+// ENDPOINT POST CARRINHO
 app.post("/cart/add", verifyToken, isUser, async (req, res) => {
-  const { productId, quantity, color, size } = req.body; // Extraindo as variáveis do corpo da requisição
+  const { productId, quantity, color, size } = req.body;
   const userId = req.user.userId;
 
   try {
-    // Verifica se o produto existe
     const product = await prisma.product.findUnique({
       where: { id: productId },
+      include: {
+        sizes: true,
+        colors: true,
+      },
     });
 
     if (!product) {
       return res.status(404).json({ message: "Produto não encontrado." });
     }
 
-    // Validação: Verifica se a quantidade, cor e tamanho foram fornecidos
     if (!quantity || !color || !size) {
       return res.status(400).json({
         message:
@@ -396,14 +466,28 @@ app.post("/cart/add", verifyToken, isUser, async (req, res) => {
       });
     }
 
-    // Adiciona o produto ao carrinho
+    const selectedColor = product.colors.find((c) => c.color === color);
+    const selectedSize = product.sizes.find((s) => s.size === size);
+
+    if (!selectedColor) {
+      return res
+        .status(400)
+        .json({ message: "Cor não encontrada para o produto." });
+    }
+
+    if (!selectedSize) {
+      return res
+        .status(400)
+        .json({ message: "Tamanho não encontrado para o produto." });
+    }
+
     const cartItem = await prisma.purchase.create({
       data: {
         userId: userId,
         productId: product.id,
         title: product.title,
-        image_url: product.image_url,
-        price: product.price,
+        image_url: selectedColor.image_url || product.image_url,
+        price: selectedSize.price,
         quantity: quantity,
         color: color,
         size: size,
@@ -419,23 +503,35 @@ app.post("/cart/add", verifyToken, isUser, async (req, res) => {
   }
 });
 
+// ENDPOINT GET CARRINHO
 app.get("/cart", verifyToken, isUser, async (req, res) => {
   try {
-    // Busca os itens do carrinho do usuário
+    const userId = req.user?.userId; // Certifique-se de que req.user existe
+    if (!userId) {
+      return res.status(400).json({ error: "Usuário não autenticado." });
+    }
     const cartItems = await prisma.purchase.findMany({
       where: { userId: req.user.userId },
       include: {
-        product: true,
+        product: {
+          include: {
+            sizes: true, // Inclui os tamanhos do produto
+            colors: true, // Inclui as cores do produto
+          },
+        },
       },
     });
 
     res.status(200).json(cartItems);
   } catch (error) {
-    res.status(500).json({ message: "Erro ao obter carrinho", error });
+    console.error("Erro ao obter carrinho:", error.message);
+    res
+      .status(500)
+      .json({ message: "Erro ao obter carrinho.", error: error.message });
   }
 });
 
-//Endpoint para remover o item especifico do carrinho
+// ENDPOINT DELETE CARRINHO
 app.delete("/cart/remove/:productId", verifyToken, isUser, async (req, res) => {
   const { productId } = req.params.productId;
   const userId = req.user.userId;
@@ -456,7 +552,7 @@ app.delete("/cart/remove/:productId", verifyToken, isUser, async (req, res) => {
 
     await prisma.purchase.delete({
       where: {
-        id: cartItem.id, // Usa o ID do item encontrado no carrinho
+        id: cartItem.id,
       },
     });
 
@@ -469,13 +565,12 @@ app.delete("/cart/remove/:productId", verifyToken, isUser, async (req, res) => {
   }
 });
 
-// Endpoint para limpar o carrinho
+// ENDPOINT DELETE LIMPAR CARRINHO
 app.delete("/cart/clear", verifyToken, async (req, res) => {
   try {
-    // Remover todos os itens do carrinho do usuário logado
     await prisma.purchase.deleteMany({
       where: {
-        userId: req.user.userId, // Assume que o token inclui o userId
+        userId: req.user.userId,
       },
     });
     res.status(200).json({ message: "Carrinho limpo com sucesso." });
@@ -485,7 +580,7 @@ app.delete("/cart/clear", verifyToken, async (req, res) => {
   }
 });
 
-// ENDPOINT PARA ATUALIZAR A QUANTIDADE DO ITEM NO CARRINHO
+// ENDPOINT PUT CARRINHO
 app.put("/cart/update/:productId", verifyToken, isUser, async (req, res) => {
   const { quantity } = req.body;
   const userId = req.user.userId;
@@ -530,7 +625,7 @@ app.put("/cart/update/:productId", verifyToken, isUser, async (req, res) => {
   }
 });
 
-// ENDPOINT ATUALIZAR INFO USUARIOS
+// ENDPOINT GET ATUALIZAR USUARIO
 app.get("/user", verifyToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -578,4 +673,254 @@ app.put("/user/update", verifyToken, async (req, res) => {
   });
 
   res.status(200).json({ message: "Usuário atualizado com sucesso." });
+});
+
+// ENDPOINT POST PEDIDO DO USUÁRIO
+app.post("/orders", verifyToken, isUser, async (req, res) => {
+  const { orderItems, totalPrice } = req.body;
+
+  // Verifica se há itens no pedido
+  if (!orderItems || orderItems.length === 0) {
+    return res.status(400).json({ message: "Não há itens no pedido." });
+  }
+
+  try {
+    // Gera um protocolo único para o pedido
+    const protocol = `ORD-${Date.now()}`;
+
+    // Cria o pedido no banco de dados
+    const newOrder = await prisma.order.create({
+      data: {
+        protocol,
+        userId: req.user.userId, // ID do usuário logado
+        orderItems: {
+          create: orderItems.map((item) => ({
+            productId: item.productId,
+            quantity: parseInt(item.quantity, 10),
+            title: item.title, // Nome do produto
+            price: item.price,
+            color: item.color, // Cor do produto
+            size: item.size, // Tamanho do produto
+            totalPrice: item.totalPrice,
+          })),
+        },
+        totalPrice, // Inclui os itens do pedido na resposta
+      },
+      include: {
+        orderItems: true,
+      },
+    });
+
+    res.status(201).json(newOrder); // Retorna o pedido criado
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao criar o pedido.", error });
+  }
+});
+
+// ENDPOINT GET PEDIDO DO USUÁRIO
+app.get("/orders", verifyToken, isUser, async (req, res) => {
+  try {
+    // Busca os pedidos do usuário logado
+    const userOrders = await prisma.order.findMany({
+      where: { userId: req.user.userId }, // Filtra pelos pedidos do usuário logado
+      include: {
+        orderItems: {
+          include: {
+            product: true, // Inclui informações do produto no item do pedido
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" }, // Ordena os pedidos pela data de criação
+    });
+
+    // Verifica se os pedidos e itens foram encontrados
+    if (!userOrders || userOrders.length === 0) {
+      return res.status(404).json({ message: "Nenhum pedido encontrado." });
+    }
+
+    res.status(200).json(userOrders); // Retorna os pedidos do usuário
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar os pedidos.", error });
+  }
+});
+
+// ENDPOINT GET DETALHES DO PEDIDO
+app.get("/order/:id", verifyToken, isUser, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Busca o pedido com base no ID fornecido
+    const order = await prisma.order.findUnique({
+      where: { id }, // ou { protocol: id } caso prefira buscar pelo protocolo
+      include: {
+        orderItems: {
+          include: {
+            product: true, // Inclui detalhes do produto, caso necessário
+          },
+        },
+      },
+    });
+
+    // Verifica se o pedido existe
+    if (!order) {
+      return res.status(404).json({ message: "Pedido não encontrado." });
+    }
+
+    // Retorna os detalhes do pedido
+    res.status(200).json(order);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Erro ao buscar o pedido.", error });
+  }
+});
+
+// ENDPOINT PARA ATUALIZAR O STATUS DO PEDIDO
+app.patch("/orders/:id/status", verifyToken, isAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!status) {
+    return res.status(400).json({ message: "O status é obrigatório." });
+  }
+
+  try {
+    const updatedOrder = await prisma.order.update({
+      where: { id },
+      data: { status },
+    });
+
+    res.status(200).json(updatedOrder);
+  } catch (error) {
+    console.error("Erro ao atualizar o status do pedido:", error);
+    res.status(500).json({ message: "Erro ao atualizar o status do pedido." });
+  }
+});
+
+// ENDPOINT GET TODOS OS PEDIDOS PARA ADMINISTRADOR
+app.get("/ordersadm", verifyToken, isAdmin, async (req, res) => {
+  try {
+    // Busca todos os pedidos, independente do usuário
+    const allOrders = await prisma.order.findMany({
+      include: {
+        user: { select: { id: true, name: true, email: true } }, // Inclui informações do usuário que fez o pedido
+        orderItems: {
+          include: {
+            product: true, // Inclui detalhes do produto
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" }, // Ordena os pedidos pela data de criação
+    });
+
+    // Verifica se há pedidos
+    if (!allOrders || allOrders.length === 0) {
+      return res.status(404).json({ message: "Nenhum pedido encontrado." });
+    }
+
+    res.status(200).json(allOrders); // Retorna todos os pedidos
+  } catch (error) {
+    console.error("Erro ao buscar pedidos:", error);
+    res.status(500).json({ message: "Erro ao buscar pedidos.", error });
+  }
+});
+
+// ENDPOINT USERS DASHBOARD
+app.get("/api/usuarios/contagem", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const count = await prisma.user.count();
+    res.json({ count });
+  } catch (error) {
+    console.error("Erro ao contar usuários:", error);
+    res.status(500).json({ message: "Erro ao contar usuários" });
+  }
+});
+
+// ENDPOINT PRODUTOS DASHBOARD
+app.get("/api/produtos/contagem", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const count = await prisma.product.count();
+    res.json({ count });
+  } catch (error) {
+    console.error("Erro ao contar produtos:", error);
+    res.status(500).json({ message: "Erro ao contar produtos" });
+  }
+});
+
+// ENDPOINT POSTAGENS DASHBOARD
+app.get("/api/noticias/contagem", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const count = await prisma.post.count();
+    res.json({ count });
+  } catch (error) {
+    console.error("Erro ao contar notícias:", error);
+    res.status(500).json({ message: "Erro ao contar notícias" });
+  }
+});
+
+// ENDPOINT PEDIDOS DASHBOARD
+app.get("/api/pedidos/contagem", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const count = await prisma.order.count();
+    res.json({ count });
+  } catch (error) {
+    console.error("Erro ao contar pedidos:", error);
+    res.status(500).json({ message: "Erro ao contar pedidos" });
+  }
+});
+
+// ENDPOINT GET PESQUISAR PEDIDOS
+app.get("/orders/search", async (req, res) => {
+  const { protocol, page = 1, limit = 12 } = req.query;
+
+  // Define os parâmetros de paginação
+  const skip = (page - 1) * limit;
+  const take = parseInt(limit);
+
+  // Se o protocolo estiver vazio, retorna todos os pedidos
+  if (!protocol) {
+    try {
+      const totalOrders = await prisma.order.count();
+      const orders = await prisma.order.findMany({
+        skip,
+        take,
+      });
+      return res.status(200).json({
+        orders,
+        totalPages: Math.ceil(totalOrders / limit),
+        currentPage: parseInt(page),
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Erro ao buscar pedidos.", error });
+    }
+  }
+
+  // Filtra os pedidos com base no protocolo
+  try {
+    const [orders, totalOrders] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          protocol: { contains: protocol, mode: "insensitive" },
+        },
+        skip,
+        take,
+      }),
+      prisma.order.count({
+        where: {
+          protocol: { contains: protocol, mode: "insensitive" },
+        },
+      }),
+    ]);
+
+    res.status(200).json({
+      orders,
+      totalPages: Math.ceil(totalOrders / limit),
+      currentPage: parseInt(page),
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Erro ao buscar pedidos.", error });
+  }
 });
