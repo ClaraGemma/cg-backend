@@ -220,7 +220,7 @@ app.get("/products", async (req, res) => {
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
 
-    // Busca os produtos com paginação
+    // Busca os produtos com paginação, incluindo tamanhos e cores
     const products = await prisma.product.findMany({
       skip: (pageNumber - 1) * limitNumber,
       take: limitNumber,
@@ -230,11 +230,26 @@ app.get("/products", async (req, res) => {
       },
     });
 
+    // Ajusta os produtos para incluir uma imagem e preço predefinidos
+    const adjustedProducts = products.map((product) => {
+      const defaultColor = product.colors?.[0]; // Seleciona a primeira cor
+      const defaultSize = product.sizes?.reduce(
+        (min, size) => (size.price < min.price ? size : min),
+        product.sizes?.[0] // Começa com o primeiro tamanho
+      );
+
+      return {
+        ...product,
+        defaultImage: defaultColor?.image_url || null, // URL da primeira cor (ou nulo)
+        defaultPrice: defaultSize?.price || 0, // Menor preço encontrado (ou 0)
+      };
+    });
+
     // Conta o total de produtos
     const totalProducts = await prisma.product.count();
     const totalPages = Math.ceil(totalProducts / limitNumber);
 
-    res.status(200).json({ products, totalPages });
+    res.status(200).json({ products: adjustedProducts, totalPages });
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     res.status(500).json({ message: "Erro ao buscar produtos." });
